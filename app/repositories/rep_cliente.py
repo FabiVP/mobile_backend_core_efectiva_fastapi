@@ -1,6 +1,7 @@
 """Repositorio del lado app de clientes — consultas sobre bd_core_mobile."""
 import json
 import uuid
+from datetime import date
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.models.mdl_clientes import Cliente
@@ -91,8 +92,33 @@ def crear_solicitud(db: Session, cliente_id: str, d: dict) -> dict:
         raise ValueError("Cliente no encontrado")
 
     asesor_id = _default_asesor_id(db)
+    asesor = db.execute(
+        text("SELECT agencia_id FROM asesores WHERE id = :id"),
+        {"id": asesor_id},
+    ).mappings().first()
+
     sol_id = str(uuid.uuid4())
     expediente = "EXP-" + sol_id.replace("-", "")[:8].upper()
+
+    hoy = date.today()
+
+    db.execute(
+        text("""INSERT INTO cartera_diaria
+                 (id, asesor_id, cliente_id, agencia_id, fecha_asignacion,
+                  tipo_gestion, prioridad, monto_credito, estado_visita)
+                 VALUES
+                 (:id, :asesor, :cli, :agencia, :fecha,
+                  'NUEVA_SOLICITUD', 'normal', :monto, 'pendiente')
+                 ON CONFLICT (asesor_id, cliente_id, fecha_asignacion) DO NOTHING"""),
+        {
+            "id": str(uuid.uuid4()),
+            "asesor": asesor_id,
+            "cli": cliente_id,
+            "agencia": asesor["agencia_id"] if asesor else None,
+            "fecha": hoy,
+            "monto": d["monto_solicitado"],
+        },
+    )
 
     db.execute(
         text("""INSERT INTO solicitudes_credito
