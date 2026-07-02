@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     CORE_BACKEND_URL: str = "http://localhost:8001"
     # BD del nucleo bancario para el puente de promocion (sync_outbox -> core)
     CORE_DATABASE_URL: str = (
-        "postgresql://postgres:Admin123@localhost:5432/bd_core_financiero"
+        "postgresql://neondb_owner:npg_5Ks8vdXuWfTP@ep-young-band-atjrkvnz-pooler.c-9.us-east-1.aws.neon.tech/bd_core_financiero?sslmode=require"
     )
     PORT: int = 8003
 

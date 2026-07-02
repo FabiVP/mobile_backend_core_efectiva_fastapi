@@ -1,4 +1,7 @@
 """Repositorio del lado app de clientes — consultas sobre bd_core_mobile."""
+import json
+import uuid
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.models.mdl_clientes import Cliente
 from app.models.mdl_cliente_mobile import (
@@ -68,3 +71,79 @@ def crear_operacion(db: Session, cliente_id: str, data: dict) -> OperacionClient
     db.commit()
     db.refresh(op)
     return op
+
+
+def crear_solicitud(db: Session, cliente_id: str, d: dict) -> dict:
+    """Crea una solicitud de credito desde la app de clientes."""
+    cliente = db.execute(
+        text("SELECT numero_documento, nombres, apellidos FROM clientes WHERE id = :id"),
+        {"id": cliente_id},
+    ).mappings().first()
+    if not cliente:
+        raise ValueError("Cliente no encontrado")
+
+    sol_id = str(uuid.uuid4())
+    expediente = "EXP-" + sol_id.replace("-", "")[:8].upper()
+
+    db.execute(
+        text("""INSERT INTO solicitudes_credito
+                 (id, numero_expediente, cliente_id, canal,
+                  tipo_negocio, nombre_negocio, ingresos_estimados,
+                  gastos_mensuales, patrimonio_estimado,
+                  monto_solicitado, plazo_meses, moneda, tipo_cuota, garantia,
+                  destino_credito, cuota_estimada, tea_referencial,
+                  firma_cliente_base64, estado)
+                VALUES
+                 (:id, :exp, :cli, 'cliente',
+                  :tn, :nn, :ing, :gm, :pat,
+                  :monto, :plazo, :mon, :tc, :gar,
+                  :dest, :cuota, :tea, :firma, 'enviado')"""),
+        {
+            "id": sol_id,
+            "exp": expediente,
+            "cli": cliente_id,
+            "tn": d.get("tipo_negocio"),
+            "nn": d.get("nombre_negocio"),
+            "ing": d.get("ingresos_estimados"),
+            "gm": d.get("gastos_mensuales"),
+            "pat": d.get("patrimonio_estimado"),
+            "monto": d["monto_solicitado"],
+            "plazo": d["plazo_meses"],
+            "mon": d.get("moneda", "PEN"),
+            "tc": d.get("tipo_cuota", "mensual"),
+            "gar": d.get("garantia", "sin_garantia"),
+            "dest": d.get("destino_credito"),
+            "cuota": d.get("cuota_estimada"),
+            "tea": d.get("tea_referencial"),
+            "firma": d.get("firma_cliente_base64"),
+        },
+    )
+
+    payload = {
+        "numero_documento": cliente["numero_documento"],
+        "nombres": cliente["nombres"] or "",
+        "apellidos": cliente["apellidos"] or "",
+        "monto_solicitado": float(d["monto_solicitado"]),
+        "plazo_meses": int(d["plazo_meses"]),
+        "numero_expediente": expediente,
+    }
+    db.execute(
+        text("""INSERT INTO sync_outbox (id, entidad, entidad_id, operacion, payload, estado)
+                 VALUES (:id, 'solicitudes_credito', :eid, 'create', CAST(:payload AS jsonb), 'pendiente')"""),
+        {"id": str(uuid.uuid4()), "eid": sol_id, "payload": json.dumps(payload)},
+    )
+    db.commit()
+    return {"id": sol_id, "numero_expediente": expediente, "estado": "enviado"}
+
+
+def subir_documento_solicitud(db: Session, solicitud_id: str, data: dict) -> dict:
+    """Registra metadata de un documento adjunto desde la app cliente."""
+    doc_id = str(uuid.uuid4())
+    db.execute(
+        text("""INSERT INTO solicitudes_documentos (id, solicitud_id, tipo_documento, storage_url, tamanio_kb)
+                 VALUES (:id, :sol, :tipo, :url, :kb)"""),
+        {"id": doc_id, "sol": solicitud_id, "tipo": data["tipo_documento"],
+         "url": data.get("storage_url"), "kb": data.get("tamanio_kb")},
+    )
+    db.commit()
+    return {"id": doc_id}

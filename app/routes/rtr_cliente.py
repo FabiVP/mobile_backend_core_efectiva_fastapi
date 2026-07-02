@@ -13,6 +13,7 @@ from app.core.cfg_auth import get_current_cliente
 from app.schemas.sch_cliente import (
     LoginClienteIn, RegisterClienteIn, TokenClienteOut, ClienteOut, CuentaAhorroOut, CreditoOut,
     CuotaOut, MovimientoOut, TarjetaOut, NotificacionOut, OperacionIn, OperacionOut,
+    SolicitudClienteIn, SolicitudClienteOut, DocumentoClienteIn,
 )
 from app.controllers import ctl_auth_cliente
 from app.repositories import rep_cliente
@@ -132,3 +133,27 @@ def crear_operacion(
 ):
     """Registra una operación iniciada por el cliente (transferencia / pago)."""
     return rep_cliente.crear_operacion(db, cli["cliente_id"], data.model_dump())
+
+
+@router.post("/solicitudes", response_model=SolicitudClienteOut)
+def crear_solicitud(
+    data: SolicitudClienteIn,
+    db: Session = Depends(get_db),
+    cli: dict = Depends(get_current_cliente),
+):
+    """Registra una solicitud de credito desde la app de clientes."""
+    try:
+        return rep_cliente.crear_solicitud(db, cli["cliente_id"], data.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/solicitudes/{solicitud_id}/documentos")
+def subir_documento(
+    solicitud_id: str,
+    data: DocumentoClienteIn,
+    db: Session = Depends(get_db),
+    cli: dict = Depends(get_current_cliente),
+):
+    """Registra un documento adjunto a la solicitud desde la app cliente."""
+    return rep_cliente.subir_documento_solicitud(db, solicitud_id, data.model_dump())

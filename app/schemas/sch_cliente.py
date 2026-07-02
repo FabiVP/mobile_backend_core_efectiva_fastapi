@@ -115,6 +115,37 @@ class NotificacionOut(BaseModel):
     created_at: datetime
 
 
+# ── Solicitud de crédito desde app cliente ─────────────────────
+class SolicitudClienteIn(BaseModel):
+    tipo_negocio: str | None = None
+    nombre_negocio: str | None = None
+    ingresos_estimados: float | None = None
+    gastos_mensuales: float | None = None
+    patrimonio_estimado: float | None = None
+    monto_solicitado: float
+    plazo_meses: int
+    moneda: str = "PEN"
+    tipo_cuota: str = "mensual"
+    garantia: str = "sin_garantia"
+    destino_credito: str | None = None
+    cuota_estimada: float | None = None
+    tea_referencial: float | None = None
+    firma_cliente_base64: str | None = None
+
+
+class SolicitudClienteOut(BaseModel):
+    id: str
+    numero_expediente: str
+    estado: str
+
+
+class DocumentoClienteIn(BaseModel):
+    tipo_documento: str
+    storage_url: str | None = None
+    tamanio_kb: int | None = None
+    nitidez_score: float | None = None
+
+
 # ── Operaciones iniciadas por el cliente ───────────────────────
 class OperacionIn(BaseModel):
     cod_cuenta_origen: str
