@@ -2,7 +2,7 @@
 Seed: 30 clientes demo (rol Cliente) para App Clientes.
 Login con el numero de documento como username y password.
 """
-import sys, os, uuid
+import json, sys, os, uuid
 from sqlalchemy import text
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -74,6 +74,13 @@ def run():
                    VALUES (:id, :cli, :user, :pw, TRUE)"""),
                 {"id": user_id, "cli": cli_id, "user": doc,
                  "pw": hash_password(doc)},
+            )
+
+            payload = {"numero_documento": doc, "nombres": nombres, "apellidos": apellidos}
+            db.execute(
+                text("""INSERT INTO sync_outbox (id, entidad, entidad_id, operacion, payload, estado)
+                         VALUES (:id, 'clientes', :eid, 'create', CAST(:payload AS jsonb), 'pendiente')"""),
+                {"id": str(uuid.uuid4()), "eid": cli_id, "payload": json.dumps(payload)},
             )
             insertados += 1
             print(f"  CREADO: {nombres} {apellidos} ({doc}) / pass: {doc}")
