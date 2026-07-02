@@ -1,3 +1,5 @@
+import json
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -6,7 +8,6 @@ from app.core.cfg_database import get_db
 from app.core.cfg_auth import get_current_asesor
 from app.schemas.sch_ficha import FichaOut, UbicacionIn
 from app.repositories import rep_ficha
-import uuid
 
 router = APIRouter()
 
@@ -95,6 +96,17 @@ def crear_cliente(
          "tel": data.telefono, "dir": data.direccion, "tn": data.tipo_negocio,
          "nn": data.nombre_negocio, "ing": data.ingresos_estimados,
          "lat": data.lat, "lng": data.lng},
+    )
+
+    payload = {
+        "numero_documento": data.numero_documento,
+        "nombres": data.nombres,
+        "apellidos": data.apellidos,
+    }
+    db.execute(
+        text("""INSERT INTO sync_outbox (id, entidad, entidad_id, operacion, payload, estado)
+                 VALUES (:id, 'clientes', :eid, 'create', CAST(:payload AS jsonb), 'pendiente')"""),
+        {"id": str(uuid.uuid4()), "eid": cid, "payload": json.dumps(payload)},
     )
     db.commit()
     return {"id": cid, "numero_documento": data.numero_documento, "nombres": data.nombres, "apellidos": data.apellidos}

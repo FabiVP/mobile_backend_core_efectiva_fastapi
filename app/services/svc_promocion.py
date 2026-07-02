@@ -101,8 +101,8 @@ def promover(db: Session) -> dict:
     """Procesa la cola sync_outbox pendiente. Devuelve conteos."""
     pendientes = db.execute(
         text(
-            """SELECT id, entidad_id, payload FROM sync_outbox
-               WHERE estado = 'pendiente' AND entidad = 'solicitudes_credito'
+            """SELECT id, entidad_id, entidad, payload FROM sync_outbox
+               WHERE estado = 'pendiente' AND entidad IN ('solicitudes_credito', 'clientes')
                ORDER BY created_at"""
         )
     ).mappings().all()
@@ -114,28 +114,49 @@ def promover(db: Session) -> dict:
             p = o["payload"]  # JSONB -> dict
             try:
                 pkcliente = _upsert_dcliente(core, p)
-                cod = _insert_dsolicitud(core, pkcliente, p, str(o["entidad_id"]))
+                cod = _insert_dsolicitud(core, pkcliente, p, str(o["entidad_id"])) \
+                    if o["entidad"] == "solicitudes_credito" else None
                 core.commit()
+
+                if o["entidad"] == "solicitudes_credito":
+                    ref = cod
+                    db.execute(
+                        text(
+                            "UPDATE solicitudes_credito SET cod_solicitud_core=:ref "
+                            "WHERE id=:eid"
+                        ),
+                        {"ref": ref, "eid": o["entidad_id"]},
+                    )
+                    db.execute(
+                        text(
+                            """INSERT INTO sync_log (id, direccion, entidad, referencia, resultado, detalle)
+                               VALUES (gen_random_uuid(),'mobile_a_core','solicitudes_credito',:ref,'ok','Promovida al core')"""
+                        ),
+                        {"ref": ref},
+                    )
+                else:
+                    cod_cliente = ("MOB" + p.get("numero_documento", ""))[:12]
+                    ref = cod_cliente
+                    db.execute(
+                        text(
+                            "UPDATE clientes SET cod_cliente=:ref WHERE id=:eid"
+                        ),
+                        {"ref": ref, "eid": o["entidad_id"]},
+                    )
+                    db.execute(
+                        text(
+                            """INSERT INTO sync_log (id, direccion, entidad, referencia, resultado, detalle)
+                               VALUES (gen_random_uuid(),'mobile_a_core','clientes',:ref,'ok','Promovido al core')"""
+                        ),
+                        {"ref": ref},
+                    )
+
                 db.execute(
                     text(
                         """UPDATE sync_outbox SET estado='aplicado', core_ref=:ref,
                            procesado_at=:ts WHERE id=:id"""
                     ),
-                    {"ref": cod, "ts": datetime.now(timezone.utc), "id": o["id"]},
-                )
-                db.execute(
-                    text(
-                        "UPDATE solicitudes_credito SET cod_solicitud_core=:ref "
-                        "WHERE id=:eid"
-                    ),
-                    {"ref": cod, "eid": o["entidad_id"]},
-                )
-                db.execute(
-                    text(
-                        """INSERT INTO sync_log (id, direccion, entidad, referencia, resultado, detalle)
-                           VALUES (gen_random_uuid(),'mobile_a_core','solicitudes_credito',:ref,'ok','Promovida al core')"""
-                    ),
-                    {"ref": cod},
+                    {"ref": ref, "ts": datetime.now(timezone.utc), "id": o["id"]},
                 )
                 db.commit()
                 aplicados += 1
@@ -151,9 +172,9 @@ def promover(db: Session) -> dict:
                 db.execute(
                     text(
                         """INSERT INTO sync_log (id, direccion, entidad, referencia, resultado, detalle)
-                           VALUES (gen_random_uuid(),'mobile_a_core','solicitudes_credito',NULL,'error',:err)"""
+                           VALUES (gen_random_uuid(),'mobile_a_core',:ent,NULL,'error',:err)"""
                     ),
-                    {"err": str(e)[:500]},
+                    {"ent": o["entidad"], "err": str(e)[:500]},
                 )
                 db.commit()
                 errores += 1
