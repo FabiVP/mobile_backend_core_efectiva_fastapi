@@ -141,6 +141,8 @@ class SolicitudClienteOut(BaseModel):
 
 class DocumentoClienteIn(BaseModel):
     tipo_documento: str
+    archivo_base64: str | None = None
+    content_type: str | None = None
     storage_url: str | None = None
     tamanio_kb: int | None = None
     nitidez_score: float | None = None

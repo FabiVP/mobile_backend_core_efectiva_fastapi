@@ -33,6 +33,8 @@ class SolicitudUpdateIn(BaseModel):
 
 class DocumentoIn(BaseModel):
     tipo_documento: str
+    archivo_base64: str | None = None
+    content_type: str | None = None
     storage_url: str | None = None
     tamanio_kb: int | None = None
 
@@ -99,7 +101,9 @@ def transmitir_solicitud(
     db: Session = Depends(get_db),
     asesor: dict = Depends(get_current_asesor),
 ):
-    """Transmite una solicitud al core (cambia estado a 'enviado')."""
+    """Transmite una solicitud al core.
+    1) Cambia estado a 'enviado'
+    2) Promueve sync_outbox pendiente al nucleo bancario (bd_core_financiero)"""
     sol = rep_solicitudes.obtener(db, solicitud_id)
     if sol is None:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -107,9 +111,14 @@ def transmitir_solicitud(
         raise HTTPException(status_code=403, detail="No eres el asesor de esta solicitud")
     if sol["estado"] not in ("borrador", "enviado"):
         raise HTTPException(status_code=400, detail=f"No se puede transmitir una solicitud en estado '{sol['estado']}'")
-    return rep_solicitudes.actualizar(
+
+    result = rep_solicitudes.actualizar(
         db, solicitud_id, {"estado": "enviado", "cambiado_por": "asesor"}
     )
+
+    sync_result = svc_promocion.promover(db)
+    result["sync"] = sync_result
+    return result
 
 
 @router.post("/{solicitud_id}/desembolsar")

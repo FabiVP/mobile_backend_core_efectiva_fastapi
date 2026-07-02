@@ -1,16 +1,17 @@
 from datetime import datetime, timezone, date
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, text
 from app.models.mdl_cartera import CarteraDiaria
 from app.models.mdl_clientes import Cliente
 
-def _build_response(c, cli):
+def _build_response(c, cli, solicitud_estado=None):
     return {
         "id": str(c.id),
         "cliente_id": str(c.cliente_id),
         "cliente_nombre": f"{cli.nombres} {cli.apellidos}",
         "documento": cli.numero_documento,
         "tipo_gestion": c.tipo_gestion,
+        "solicitud_estado": solicitud_estado,
         "prioridad": c.prioridad,
         "score_prioridad": c.score_prioridad or 0,
         "monto_credito": float(c.monto_credito or 0),
@@ -19,6 +20,16 @@ def _build_response(c, cli):
         "lat": float(cli.lat) if cli.lat is not None else None,
         "lng": float(cli.lng) if cli.lng is not None else None,
     }
+
+def _ultimo_estado_solicitud(db: Session, cliente_id: str) -> str | None:
+    """Retorna el estado de la solicitud mas reciente del cliente (no borrador)."""
+    sol = db.execute(
+        text("""SELECT estado FROM solicitudes_credito
+                 WHERE cliente_id = :cli AND estado != 'borrador'
+                 ORDER BY created_at DESC LIMIT 1"""),
+        {"cli": cliente_id},
+    ).scalar()
+    return sol
 
 def listar_por_asesor(db: Session, asesor_id: str, fecha: date) -> list[dict]:
     """Cartera del asesor para una fecha, ordenada por score (RF-09).
@@ -34,7 +45,10 @@ def listar_por_asesor(db: Session, asesor_id: str, fecha: date) -> list[dict]:
         .all()
     )
     if filas:
-        return [_build_response(c, cli) for c, cli in filas]
+        return [
+            _build_response(c, cli, _ultimo_estado_solicitud(db, str(c.cliente_id)))
+            for c, cli in filas
+        ]
 
     ultima_fecha = db.query(func.max(CarteraDiaria.fecha_asignacion)).filter(
         CarteraDiaria.asesor_id == asesor_id,
@@ -52,7 +66,10 @@ def listar_por_asesor(db: Session, asesor_id: str, fecha: date) -> list[dict]:
         .order_by(desc(CarteraDiaria.score_prioridad))
         .all()
     )
-    return [_build_response(c, cli) for c, cli in filas]
+    return [
+        _build_response(c, cli, _ultimo_estado_solicitud(db, str(c.cliente_id)))
+        for c, cli in filas
+    ]
 
 def marcar_visita(db: Session, asesor_id: str, cartera_id: str, data: dict) -> bool:
     fila = (

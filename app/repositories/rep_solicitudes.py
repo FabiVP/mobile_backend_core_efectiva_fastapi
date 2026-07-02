@@ -353,9 +353,11 @@ def subir_documento(db: Session, solicitud_id: str, data: dict) -> dict:
     """Registra metadata de un documento adjunto a una solicitud."""
     doc_id = str(uuid.uuid4())
     db.execute(
-        text("""INSERT INTO solicitudes_documentos (id, solicitud_id, tipo_documento, storage_url, tamanio_kb)
-                 VALUES (:id, :sol, :tipo, :url, :kb)"""),
+        text("""INSERT INTO solicitudes_documentos
+                 (id, solicitud_id, tipo_documento, archivo_base64, content_type, storage_url, tamanio_kb)
+                 VALUES (:id, :sol, :tipo, :b64, :ct, :url, :kb)"""),
         {"id": doc_id, "sol": solicitud_id, "tipo": data["tipo_documento"],
+         "b64": data.get("archivo_base64"), "ct": data.get("content_type"),
          "url": data.get("storage_url"), "kb": data.get("tamanio_kb")},
     )
     db.commit()

@@ -7,6 +7,7 @@ class CarteraItemOut(BaseModel):
     cliente_nombre: str
     documento: str
     tipo_gestion: str
+    solicitud_estado: str | None = None      # estado de la solicitud activa del cliente
     prioridad: str
     score_prioridad: int
     monto_credito: float

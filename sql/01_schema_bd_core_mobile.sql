@@ -252,6 +252,8 @@ CREATE TABLE solicitudes_documentos (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     solicitud_id    UUID NOT NULL REFERENCES solicitudes_credito(id) ON DELETE CASCADE,
     tipo_documento  VARCHAR(40) NOT NULL,    -- dni_anverso/dni_reverso/ruc/recibo_servicios/foto_negocio/foto_visita/contrato_arrendamiento
+    archivo_base64  TEXT,                    -- contenido del archivo en base64 (captura offline)
+    content_type    VARCHAR(60),             -- image/jpeg, application/pdf, etc.
     storage_url     TEXT,                    -- ruta en almacenamiento de archivos
     tamanio_kb      INTEGER,
     nitidez_score   DECIMAL(5,2),            -- varianza de Laplaciano (RF-54)
