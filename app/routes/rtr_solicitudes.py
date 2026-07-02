@@ -76,11 +76,39 @@ def actualizar_solicitud(
     solicitud_id: str,
     data: SolicitudUpdateIn,
     db: Session = Depends(get_db),
-    asesor: dict = Depends(require_perfil("supervisor", "administrador")),
+    asesor: dict = Depends(get_current_asesor),
 ):
-    """Actualiza estado/evaluacion de una solicitud (solo supervisor/admin)."""
+    """Actualiza estado/evaluacion de una solicitud (solo el asesor dueno o supervisor)."""
+    sol = rep_solicitudes.obtener(db, solicitud_id)
+    if sol is None:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    if asesor.get("perfil") not in ("supervisor", "administrador"):
+        if sol["asesor_id"] != asesor["asesor_id"]:
+            raise HTTPException(status_code=403, detail="No eres el asesor de esta solicitud")
+        solo_estado = all(k == "estado" or k == "cambiado_por" for k in data.model_dump(exclude_none=True).keys())
+        if not solo_estado:
+            raise HTTPException(status_code=403, detail="Solo puedes cambiar el estado de tu solicitud")
     return rep_solicitudes.actualizar(
         db, solicitud_id, data.model_dump(exclude_none=True)
+    )
+
+
+@router.post("/{solicitud_id}/transmitir")
+def transmitir_solicitud(
+    solicitud_id: str,
+    db: Session = Depends(get_db),
+    asesor: dict = Depends(get_current_asesor),
+):
+    """Transmite una solicitud al core (cambia estado a 'enviado')."""
+    sol = rep_solicitudes.obtener(db, solicitud_id)
+    if sol is None:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    if sol["asesor_id"] != asesor["asesor_id"]:
+        raise HTTPException(status_code=403, detail="No eres el asesor de esta solicitud")
+    if sol["estado"] not in ("borrador", "enviado"):
+        raise HTTPException(status_code=400, detail=f"No se puede transmitir una solicitud en estado '{sol['estado']}'")
+    return rep_solicitudes.actualizar(
+        db, solicitud_id, {"estado": "enviado", "cambiado_por": "asesor"}
     )
 
 
