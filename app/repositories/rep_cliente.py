@@ -73,6 +73,14 @@ def crear_operacion(db: Session, cliente_id: str, data: dict) -> OperacionClient
     return op
 
 
+def _default_asesor_id(db: Session) -> str:
+    """Devuelve el ID del primer asesor disponible (para solicitudes de clientes)."""
+    row = db.execute(text("SELECT id FROM asesores ORDER BY created_at LIMIT 1")).first()
+    if row:
+        return str(row[0])
+    raise ValueError("No hay asesores registrados en el sistema")
+
+
 def crear_solicitud(db: Session, cliente_id: str, d: dict) -> dict:
     """Crea una solicitud de credito desde la app de clientes."""
     cliente = db.execute(
@@ -82,25 +90,27 @@ def crear_solicitud(db: Session, cliente_id: str, d: dict) -> dict:
     if not cliente:
         raise ValueError("Cliente no encontrado")
 
+    asesor_id = _default_asesor_id(db)
     sol_id = str(uuid.uuid4())
     expediente = "EXP-" + sol_id.replace("-", "")[:8].upper()
 
     db.execute(
         text("""INSERT INTO solicitudes_credito
-                 (id, numero_expediente, cliente_id, canal,
+                 (id, numero_expediente, asesor_id, cliente_id, canal,
                   tipo_negocio, nombre_negocio, ingresos_estimados,
                   gastos_mensuales, patrimonio_estimado,
                   monto_solicitado, plazo_meses, moneda, tipo_cuota, garantia,
                   destino_credito, cuota_estimada, tea_referencial,
                   firma_cliente_base64, estado)
                 VALUES
-                 (:id, :exp, :cli, 'cliente',
+                 (:id, :exp, :asesor, :cli, 'cliente',
                   :tn, :nn, :ing, :gm, :pat,
                   :monto, :plazo, :mon, :tc, :gar,
                   :dest, :cuota, :tea, :firma, 'enviado')"""),
         {
             "id": sol_id,
             "exp": expediente,
+            "asesor": asesor_id,
             "cli": cliente_id,
             "tn": d.get("tipo_negocio"),
             "nn": d.get("nombre_negocio"),
