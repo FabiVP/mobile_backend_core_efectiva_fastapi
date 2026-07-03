@@ -130,14 +130,21 @@ def listar_notas(db: Session, solicitud_id: str) -> list[dict]:
     ]
 
 
-def listar(db: Session, asesor_id: str, perfil: str = "") -> list[dict]:
-    """Solicitudes del asesor en el mes actual (HU-20), recientes primero.
-    Si el usuario es supervisor, retorna todas las solicitudes del mes."""
+def listar(db: Session, asesor_id: str, perfil: str = "", pagina: int = 1, por_pagina: int = 30) -> dict:
+    """Solicitudes con paginacion, recientes primero.
+    Si el usuario es supervisor, retorna todas las solicitudes."""
     where_extra = ""
     params: dict = {}
     if perfil != "supervisor":
         where_extra = "AND s.asesor_id = :asesor"
         params["asesor"] = asesor_id
+
+    total = db.execute(
+        text(f"SELECT COUNT(*) FROM solicitudes_credito s WHERE 1=1 {where_extra}"),
+        params,
+    ).scalar()
+
+    offset = (pagina - 1) * por_pagina
     rows = db.execute(
         text(
             f"""
@@ -151,11 +158,13 @@ def listar(db: Session, asesor_id: str, perfil: str = "") -> list[dict]:
             WHERE 1=1
               {where_extra}
             ORDER BY s.created_at DESC
+            LIMIT :lim OFFSET :off
             """
         ),
-        params,
+        {**params, "lim": por_pagina, "off": offset},
     ).mappings().all()
-    return [
+
+    items = [
         {
             "id": str(r["id"]),
             "numero_expediente": r["numero_expediente"],
@@ -168,6 +177,13 @@ def listar(db: Session, asesor_id: str, perfil: str = "") -> list[dict]:
         }
         for r in rows
     ]
+    return {
+        "items": items,
+        "total": total,
+        "pagina": pagina,
+        "por_pagina": por_pagina,
+        "total_paginas": (total + por_pagina - 1) // por_pagina,
+    }
 
 
 def obtener(db: Session, solicitud_id: str) -> dict | None:

@@ -17,6 +17,7 @@ def _build_response(c, cli, solicitud_estado=None):
         "monto_credito": float(c.monto_credito or 0),
         "estado_visita": c.estado_visita,
         "orden_manual": c.orden_manual,
+        "fecha_asignacion": c.fecha_asignacion.isoformat() if c.fecha_asignacion else None,
         "lat": float(cli.lat) if cli.lat is not None else None,
         "lng": float(cli.lng) if cli.lng is not None else None,
     }
@@ -31,45 +32,31 @@ def _ultimo_estado_solicitud(db: Session, cliente_id: str) -> str | None:
     ).scalar()
     return sol
 
-def listar_por_asesor(db: Session, asesor_id: str, fecha: date) -> list[dict]:
-    """Cartera del asesor para una fecha, ordenada por score (RF-09).
-    Si no hay datos para la fecha exacta, toma la fecha mas reciente disponible."""
-    filas = (
+def listar_por_asesor(db: Session, asesor_id: str, fecha: date | None = None, pagina: int = 1, por_pagina: int = 30) -> dict:
+    """Cartera del asesor con paginacion, ordenada por fecha DESC y score DESC.
+    Muestra todos los registros (no solo una fecha)."""
+    query = (
         db.query(CarteraDiaria, Cliente)
         .join(Cliente, Cliente.id == CarteraDiaria.cliente_id)
-        .filter(
-            CarteraDiaria.asesor_id == asesor_id,
-            CarteraDiaria.fecha_asignacion == fecha,
-        )
-        .order_by(desc(CarteraDiaria.score_prioridad))
-        .all()
+        .filter(CarteraDiaria.asesor_id == asesor_id)
+        .order_by(desc(CarteraDiaria.fecha_asignacion), desc(CarteraDiaria.score_prioridad))
     )
-    if filas:
-        return [
-            _build_response(c, cli, _ultimo_estado_solicitud(db, str(c.cliente_id)))
-            for c, cli in filas
-        ]
 
-    ultima_fecha = db.query(func.max(CarteraDiaria.fecha_asignacion)).filter(
-        CarteraDiaria.asesor_id == asesor_id,
-    ).scalar()
-    if ultima_fecha is None:
-        return []
+    total = query.count()
+    offset = (pagina - 1) * por_pagina
+    filas = query.offset(offset).limit(por_pagina).all()
 
-    filas = (
-        db.query(CarteraDiaria, Cliente)
-        .join(Cliente, Cliente.id == CarteraDiaria.cliente_id)
-        .filter(
-            CarteraDiaria.asesor_id == asesor_id,
-            CarteraDiaria.fecha_asignacion == ultima_fecha,
-        )
-        .order_by(desc(CarteraDiaria.score_prioridad))
-        .all()
-    )
-    return [
+    items = [
         _build_response(c, cli, _ultimo_estado_solicitud(db, str(c.cliente_id)))
         for c, cli in filas
     ]
+    return {
+        "items": items,
+        "total": total,
+        "pagina": pagina,
+        "por_pagina": por_pagina,
+        "total_paginas": (total + por_pagina - 1) // por_pagina,
+    }
 
 def marcar_visita(db: Session, asesor_id: str, cartera_id: str, data: dict) -> bool:
     fila = (

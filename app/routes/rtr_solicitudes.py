@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.cfg_database import get_db
 from app.core.cfg_auth import get_current_asesor
 from app.core.cfg_rbac import require_perfil
 from app.schemas.sch_solicitudes import (
-    SolicitudIn, SolicitudCreada, SolicitudResumen,
+    SolicitudIn, SolicitudCreada,
 )
 from app.repositories import rep_solicitudes
 from app.services import svc_promocion
@@ -51,13 +51,15 @@ def crear_solicitud(
     )
 
 
-@router.get("", response_model=list[SolicitudResumen])
+@router.get("")
 def listar_solicitudes(
+    pagina: int = Query(1, ge=1),
+    por_pagina: int = Query(30, ge=1, le=100),
     db: Session = Depends(get_db),
     asesor: dict = Depends(get_current_asesor),
 ):
-    """Historial de solicitudes del mes (HU-20) y tablero de estado (M9)."""
-    return rep_solicitudes.listar(db, asesor["asesor_id"], asesor.get("perfil", ""))
+    """Historial de solicitudes con paginacion (30 por página), recientes primero."""
+    return rep_solicitudes.listar(db, asesor["asesor_id"], asesor.get("perfil", ""), pagina, por_pagina)
 
 
 @router.get("/{solicitud_id}")

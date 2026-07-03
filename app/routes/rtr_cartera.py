@@ -1,22 +1,24 @@
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.cfg_database import get_db
 from app.core.cfg_auth import get_current_asesor
-from app.schemas.sch_cartera import CarteraItemOut, MarcarVisitaIn
+from app.schemas.sch_cartera import MarcarVisitaIn
 from app.repositories import rep_cartera
 
 router = APIRouter()
 
-@router.get("", response_model=list[CarteraItemOut])
+@router.get("")
 def listar_cartera(
     fecha: date | None = None,
+    pagina: int = Query(1, ge=1),
+    por_pagina: int = Query(30, ge=1, le=100),
     db: Session = Depends(get_db),
     asesor: dict = Depends(get_current_asesor),
 ):
-    """Cartera del dia del asesor autenticado (RF-04/RF-09)."""
-    f = fecha or date.today()
-    return rep_cartera.listar_por_asesor(db, asesor["asesor_id"], f)
+    """Cartera del asesor autenticado con paginacion (30 por página).
+    Muestra todos los registros ordenados del más reciente al más antiguo."""
+    return rep_cartera.listar_por_asesor(db, asesor["asesor_id"], fecha, pagina, por_pagina)
 
 @router.post("/{cartera_id}/visita")
 def marcar_visita(
