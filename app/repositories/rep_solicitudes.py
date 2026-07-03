@@ -148,7 +148,7 @@ def listar(db: Session, asesor_id: str, perfil: str = "") -> list[dict]:
             FROM solicitudes_credito s
             JOIN clientes c ON c.id = s.cliente_id
             JOIN asesores a ON a.id = s.asesor_id
-            WHERE date_trunc('month', s.created_at) = date_trunc('month', now())
+            WHERE 1=1
               {where_extra}
             ORDER BY s.created_at DESC
             """
