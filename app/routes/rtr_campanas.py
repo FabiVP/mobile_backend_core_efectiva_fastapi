@@ -16,6 +16,8 @@ class CampanaOut(BaseModel):
     id: str
     cliente_id: str
     cliente_nombre: str
+    asesor_codigo: Optional[str] = None
+    asesor_nombre: Optional[str] = None
     tipo: Optional[str] = None
     monto_ofertado: float
     fecha_vencimiento: Optional[str] = None
@@ -35,20 +37,29 @@ def listar(
     db: Session = Depends(get_db),
     asesor: dict = Depends(get_current_asesor),
 ):
-    """Campanas activas del asesor, mas proximas a vencer primero (HU-16/RF-40)."""
+    """Campanas activas: operador ve las suyas, supervisor/admin ve todas (HU-16/RF-40)."""
+    es_supervisor = asesor.get("perfil") in ("supervisor", "administrador")
+    params = {"hoy": date.today()}
+    where_extra = ""
+    if not es_supervisor:
+        where_extra = "AND ca.asesor_id = :asesor"
+        params["asesor"] = asesor["asesor_id"]
     rows = db.execute(
         text(
-            """
+            f"""
             SELECT ca.id, ca.cliente_id, ca.tipo, ca.monto_ofertado,
-                   ca.fecha_vencimiento, c.nombres, c.apellidos
+                   ca.fecha_vencimiento, c.nombres, c.apellidos,
+                   a.codigo_empleado AS asesor_codigo, a.nombres || ' ' || a.apellidos AS asesor_nombre
             FROM campanas_activas ca
             JOIN clientes c ON c.id = ca.cliente_id
-            WHERE ca.asesor_id = :asesor AND ca.activa = TRUE
+            JOIN asesores a ON a.id = ca.asesor_id
+            WHERE ca.activa = TRUE
               AND (ca.fecha_vencimiento IS NULL OR ca.fecha_vencimiento >= :hoy)
+              {where_extra}
             ORDER BY ca.fecha_vencimiento ASC NULLS LAST
             """
         ),
-        {"asesor": asesor["asesor_id"], "hoy": date.today()},
+        params,
     ).mappings().all()
     hoy = date.today()
     return [
@@ -56,6 +67,8 @@ def listar(
             id=str(r["id"]),
             cliente_id=str(r["cliente_id"]),
             cliente_nombre=f"{r['nombres']} {r['apellidos']}",
+            asesor_codigo=r.get("asesor_codigo"),
+            asesor_nombre=r.get("asesor_nombre"),
             tipo=r["tipo"],
             monto_ofertado=float(r["monto_ofertado"] or 0),
             fecha_vencimiento=r["fecha_vencimiento"].isoformat()
