@@ -1,11 +1,13 @@
 from datetime import date
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.cfg_database import get_db
 from app.core.cfg_auth import get_current_asesor
+from app.core.cfg_rbac import require_perfil
+import uuid
 
 router = APIRouter()
 
@@ -18,6 +20,14 @@ class CampanaOut(BaseModel):
     monto_ofertado: float
     fecha_vencimiento: Optional[str] = None
     dias_restantes: int
+
+
+class CampanaCreateIn(BaseModel):
+    cliente_dni: str
+    asesor_codigo: str
+    tipo: str = "renovacion"
+    monto_ofertado: float
+    fecha_vencimiento: str
 
 
 @router.get("", response_model=list[CampanaOut])
@@ -57,3 +67,40 @@ def listar(
         )
         for r in rows
     ]
+
+
+@router.post("")
+def crear(
+    data: CampanaCreateIn,
+    db: Session = Depends(get_db),
+    asesor: dict = Depends(require_perfil("supervisor", "administrador")),
+):
+    """Crea una nueva campana (solo supervisor/admin)."""
+    cliente = db.execute(
+        text("SELECT id FROM clientes WHERE numero_documento = :doc"),
+        {"doc": data.cliente_dni},
+    ).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    asesor_row = db.execute(
+        text("SELECT id FROM asesores WHERE codigo_empleado = :cod"),
+        {"cod": data.asesor_codigo},
+    ).first()
+    if not asesor_row:
+        raise HTTPException(status_code=404, detail="Asesor no encontrado")
+
+    try:
+        fv = date.fromisoformat(data.fecha_vencimiento)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="fecha_vencimiento debe ser YYYY-MM-DD")
+
+    campana_id = str(uuid.uuid4())
+    db.execute(
+        text("""INSERT INTO campanas_activas (id, asesor_id, cliente_id, tipo, monto_ofertado, fecha_vencimiento)
+                 VALUES (:id, :asesor, :cliente, :tipo, :monto, :fv)"""),
+        {"id": campana_id, "asesor": str(asesor_row[0]), "cliente": str(cliente[0]),
+         "tipo": data.tipo, "monto": data.monto_ofertado, "fv": fv},
+    )
+    db.commit()
+    return {"id": campana_id, "ok": True}
